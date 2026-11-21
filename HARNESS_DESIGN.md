@@ -316,6 +316,8 @@ I_{yy}\,\dot{q} = \bar{q}\,S\,\bar{c}\left(C_{m_0} + C_{m_\alpha}\,\alpha + C_{m
 - Discrete gusts: step and "1 − cosine" shapes, vertical/longitudinal/lateral.
 - Continuous turbulence: Dryden model, intensity levels (light/moderate).
 - Tunnel airspeed profile (gimbal rigs): constant, steps, slow sinusoid.
+- Live air-vector override (stand rigs only, see §5.3): an offset the student
+  sets from the viz, added on top of the scenario's scripted air vector.
 - Parameter uncertainty: truth model parameters randomly perturbed (e.g., ±10%
   on derivatives) per seeded scenario, so tuning against one run isn't enough.
 
@@ -359,7 +361,7 @@ pygame and matplotlib). Optional 3D chase view via `pyqtgraph.opengl`.
 │                              │  δe_cmd, δe_actual            │
 ├──────────────────────────────┼───────────────────────────────┤
 │ ▶ ❚❚ ⏭ step  speed 1×  reset │  student self.log() signals   │
-│ [kick] [gust] [manual]       │  (selectable)                 │
+│ [kick] [gust] [manual] [air] │  (selectable)                 │
 └──────────────────────────────┴───────────────────────────────┘
 ```
 
@@ -385,10 +387,47 @@ pygame and matplotlib). Optional 3D chase view via `pyqtgraph.opengl`.
 - **Overlay reference run:** show a previous run's traces faded behind the live
   ones.
 
+#### Wind tunnel panel (stand chapters, Parts I–III)
+
+While the aircraft is on a stand, the student can change the air flowing over it
+in real time and watch their controller respond.
+
+- **Controls:**
+  - **Airspeed** slider (e.g., 15–70 m/s). Changes dynamic pressure, so control
+    power and stiffness change with it.
+  - **Vertical flow angle** (up/down-flow, e.g., ±15°). Changes α without
+    changing θ, which is exactly what a vertical gust does.
+  - **Lateral flow angle** (Part II–III, e.g., ±15°). Creates sideslip β, which
+    rolls the aircraft through dihedral effect ($`C_{l_\beta}`$) and yaws it
+    through weathercock stability ($`C_{n_\beta}`$).
+  - **Turbulence** intensity slider (off / light / moderate).
+  - **Reset air** returns to the chapter's scripted air vector.
+- **Direct manipulation:** the air arrows in the side (and, from Part III,
+  top/rear) views can be dragged. Arrow length = airspeed, tilt = flow angle.
+- **Step vs smooth:** a toggle chooses whether changes apply instantly (a step,
+  like a sharp-edged gust) or ramp in over about a second.
+- **Cause and effect in the plots:** airspeed and flow angles get their own
+  plot traces, so the student sees "I tilted the air" on the same time axis as
+  "α jumped, θ dipped, the elevator moved, θ recovered".
+- **Available from chapter 1.00**, ahead of the gust and airspeed chapters. It
+  makes the "Observe first" step hands-on: before 1.12, the student can tilt
+  the air and *see* their PID fail to reject it. Chapter guides list specific
+  experiments under "Things to try".
+- **What the controller sees:** the air vector is a disturbance, not an
+  observation. The controller only learns about it through its effect on the
+  aircraft, plus airspeed once the airspeed sensor arrives (1.14), just like a
+  real aircraft.
+- **Free-flight chapters** (Parts IV–VI) keep the gust button but not this
+  panel; there, wind comes from the scenario.
+
 ### 5.4 Logging and replay
 
 Every run writes `runs/<timestamp>_<chapter>/` with full state, commands,
 sensors, student telemetry (`.npz`/CSV), the resolved config, and the seed.
+Interactive inputs (wind tunnel panel, kicks, gust button, manual surface
+commands) are logged as timestamped events, so a replay reproduces the run
+exactly. Runs with interactive inputs are marked *sandbox*; grading always
+uses the scripted, headless scenarios.
 Replay uses the same viz. Logs can also be loaded in a notebook for analysis.
 
 ---
@@ -672,9 +711,9 @@ Part ahead of the student.
 
 | Milestone | Delivers | Unlocks |
 |---|---|---|
-| M1 | Core 6DOF `f`, RK4, `pitch_gimbal` rig, longitudinal aero, side view, plots, manual mode, kick, logging, grader, chapters 1.00–1.05 | Student starts |
+| M1 | Core 6DOF `f`, RK4, `pitch_gimbal` rig, longitudinal aero, side view, plots, manual mode, kick, wind tunnel panel (airspeed + vertical flow), logging, grader, chapters 1.00–1.05 | Student starts |
 | M2 | Actuator models, controller rate/delay, sensors (nav level), gusts, Dryden, tunnel speed profiles, CG/fuel, parameter uncertainty, chapters 1.06–1.18 | Rest of Part I |
-| M3 | Lateral aero, `roll_gimbal` and `attitude_gimbal` rigs, rear/top views, attitude indicator, Parts II–III | Parts II–III |
+| M3 | Lateral aero, `roll_gimbal` and `attitude_gimbal` rigs, rear/top views, attitude indicator, wind tunnel panel lateral flow, Parts II–III | Parts II–III |
 | M4 | `heave_pitch` and `longitudinal` rigs, propulsion, stall, ISA atmosphere, scrolling side view, tapes, trim + linearize tools, Part IV | Part IV |
 | M5 | `free` rig, map/profile/PFD views, waypoint references, Part V | Part V |
 | M6 | Ground/gear model, runways, flight plan, mission sequencer, ground effect, wind shear, crash detection, optional 3D chase view, Part VI | Part VI |
