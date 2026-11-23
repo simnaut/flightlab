@@ -152,10 +152,10 @@ flightlab list                      # chapters, status (passed / not yet)
 flightlab guide 1.03                # print the chapter's guide
 flightlab run 1.03                  # live viz with student controller
 flightlab run 1.03 --manual         # fly it yourself (sliders / keyboard)
-flightlab run 1.03 --open-loop      # no controller, surfaces at trim
+flightlab run 1.03 --open-loop      # no controller, surfaces neutral (finding trim is 1.01's job)
 flightlab grade 1.03                # headless, N seeded scenarios → report
 flightlab replay runs/<run-id>      # replay a saved run in the viz
-flightlab compare runs/<a> runs/<b> # overlay two runs' plots
+flightlab compare runs/<a> runs/<b> # overlay two runs' plots (planned, M2)
 flightlab new 1.04                  # start next chapter from your 1.03 file
 ```
 
@@ -711,7 +711,7 @@ Part ahead of the student.
 
 | Milestone | Delivers | Unlocks |
 |---|---|---|
-| M1 | Core 6DOF `f`, RK4, `pitch_gimbal` rig, longitudinal aero, side view, plots, manual mode, kick, wind tunnel panel (airspeed + vertical flow), logging, grader, chapters 1.00–1.05 | Student starts |
+| M1 ✅ | Core 6DOF `f`, RK4, `pitch_gimbal` rig, longitudinal aero, side view, plots, manual mode, kick, wind tunnel panel (airspeed + vertical flow), logging, grader, chapters 1.00–1.05 | Student starts |
 | M2 | Actuator models, controller rate/delay, sensors (nav level), gusts, Dryden, tunnel speed profiles, CG/fuel, parameter uncertainty, chapters 1.06–1.18 | Rest of Part I |
 | M3 | Lateral aero, `roll_gimbal` and `attitude_gimbal` rigs, rear/top views, attitude indicator, wind tunnel panel lateral flow, Parts II–III | Parts II–III |
 | M4 | `heave_pitch` and `longitudinal` rigs, propulsion, stall, ISA atmosphere, scrolling side view, tapes, trim + linearize tools, Part IV | Part IV |

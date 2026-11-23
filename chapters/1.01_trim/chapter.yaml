@@ -1,0 +1,32 @@
+id: "1.01"
+title: Trim
+rig: pitch_gimbal
+duration_s: 20
+controller_rate_hz: 50
+
+tunnel:
+  airspeed_mps: 55
+  flow_angle_deg: 0
+
+initial:
+  theta_deg: 5
+
+reference:
+  theta_deg: [[0, 0]]          # hold the nose level
+
+observations:
+  ref: [theta]
+  sensors: [theta, q]
+  truth: true
+
+grading:
+  scenarios:
+    - name: Hold level
+      seeds: 3
+      randomize:
+        initial_theta_deg: [-5, 5]
+  checks:
+    - metric: steady_state_error
+      label: Pitch error (last 5 s)
+      tail_s: 5
+      max: 0.5

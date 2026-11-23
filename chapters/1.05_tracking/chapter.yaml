@@ -1,0 +1,52 @@
+id: "1.05"
+title: Step and ramp tracking
+rig: pitch_gimbal
+duration_s: 40
+controller_rate_hz: 50
+
+tunnel:
+  airspeed_mps: 55
+  flow_angle_deg: 0
+
+initial:
+  theta_deg: 0
+
+# A flight-test card: steps, then ramps (a slow pitch-up, a hold, a pitch-down),
+# then a fast doublet.
+reference:
+  theta_deg:
+    - [0, 0]
+    - [3, 0]
+    - [3, 4]
+    - [8, 4]
+    - [8, -2]
+    - [13, -2]
+    - [21, 8]     # ramp up 1.25 deg/s
+    - [25, 8]
+    - [31, -4]    # ramp down 2 deg/s
+    - [34, -4]
+    - [34, 3]
+    - [36, 3]
+    - [36, -3]
+    - [38, -3]
+    - [38, 0]
+
+observations:
+  ref: [theta]
+  sensors: [theta, q]
+  truth: true
+
+grading:
+  scenarios:
+    - name: Test card
+      seeds: 3
+      randomize:
+        initial_theta_deg: [-2, 2]
+  checks:
+    - metric: rms_error
+      max: 0.8
+    - metric: overshoot
+      max: 10
+    - metric: max_surface
+      label: Max elevator used
+      max: 15

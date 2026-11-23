@@ -1,0 +1,28 @@
+id: "1.00"
+title: Meet the harness
+rig: pitch_gimbal
+duration_s: 30
+controller_rate_hz: 50
+
+# Air in the wind tunnel
+tunnel:
+  airspeed_mps: 55
+  flow_angle_deg: 0
+
+# Start pitched up 10 degrees so you can watch it settle
+initial:
+  theta_deg: 10
+
+# Commanded pitch angle. A list of [time_s, value] points, linearly
+# interpolated; repeating a time makes a step.
+reference:
+  theta_deg: [[0, 0]]
+
+# What your controller can see
+observations:
+  ref: [theta]
+  sensors: [theta, q]
+  truth: true
+
+# No grading: this chapter is for exploring.
+grading: null

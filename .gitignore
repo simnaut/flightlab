@@ -12,3 +12,9 @@ runs/
 .vscode/
 .idea/
 .DS_Store
+
+# Student progress (local)
+progress.json
+
+# Reference solutions (kept local, not published)
+solutions/

@@ -1,0 +1,76 @@
+# Generic high-wing, single-engine light trainer.
+#
+# Numbers are approximate, based on public textbook data for this class of
+# aircraft (e.g., Roskam, "Airplane Flight Dynamics"; Stevens & Lewis). They
+# are meant to behave like a real light trainer, not to match any one airplane.
+#
+# Units: SI (m, kg, s, N), angles in radians, body axes x forward, y right,
+# z down. Positions are measured from a fixed "datum" point on the airframe,
+# positive forward (x) and down (z).
+
+name: Generic light trainer
+
+geometry:
+  S: 16.2          # wing area (m^2)
+  b: 10.9          # wingspan (m)
+  c: 1.49          # mean aerodynamic chord (m)
+
+mass:
+  dry_kg: 900.0    # empty airplane + pilot, no fuel
+  cg_dry_x: 0.0    # dry CG position from datum (m, + forward)
+  # Moments of inertia about the dry CG (kg m^2)
+  Ixx: 1285.0
+  Iyy: 1825.0
+  Izz: 2667.0
+  Ixz: 0.0
+
+fuel:
+  capacity_kg: 150.0
+  initial_kg: 130.0
+  tank_x: 0.0      # tank position from datum (m, + forward)
+  flow_full_throttle_kg_s: 0.0085
+
+aero:
+  ref_point_x: 0.0 # point the moment coefficients are referenced to (m, from datum)
+  # Lift and drag
+  CL0: 0.307
+  CL_alpha: 4.41
+  CL_q: 3.9
+  CL_de: 0.43
+  CD0: 0.031
+  K: 0.054         # induced drag factor, CD = CD0 + K CL^2
+  # Pitching moment
+  Cm0: 0.04
+  Cm_alpha: -0.613
+  Cm_q: -12.4
+  Cm_de: -1.122    # positive elevator (trailing edge down) pitches nose down
+  # Side force
+  CY_beta: -0.393
+  CY_p: 0.0
+  CY_r: 0.0
+  CY_dr: 0.187
+  # Rolling moment
+  Cl_beta: -0.0923
+  Cl_p: -0.484
+  Cl_r: 0.0798
+  Cl_da: 0.229     # positive aileron rolls right
+  Cl_dr: 0.0147
+  # Yawing moment
+  Cn_beta: 0.0587
+  Cn_p: -0.0278
+  Cn_r: -0.0937
+  Cn_da: -0.0216
+  Cn_dr: -0.0645   # positive rudder (trailing edge left) yaws nose left
+
+propulsion:
+  T_max_sl: 3500.0 # maximum thrust at sea level, zero airspeed (N)
+  V_max: 100.0     # airspeed where thrust falls to zero (m/s)
+  tau: 0.5         # engine spool time constant (s)
+  thrust_z: 0.0    # thrust line below CG (m, + down); nonzero couples power and pitch
+
+surfaces:
+  # Mechanical travel of each surface (rad). Realistic limits are enabled per
+  # chapter; until then only this hard stop applies.
+  elevator_hard_limit: 1.047   # 60 deg
+  aileron_hard_limit: 1.047
+  rudder_hard_limit: 1.047

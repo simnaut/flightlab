@@ -1,0 +1,33 @@
+id: "1.02"
+title: Proportional control
+rig: pitch_gimbal
+duration_s: 20
+controller_rate_hz: 50
+
+tunnel:
+  airspeed_mps: 55
+  flow_angle_deg: 0
+
+initial:
+  theta_deg: 0
+
+# Hold level, step to +5 deg at t=4 s, step to -3 deg at t=12 s
+reference:
+  theta_deg: [[0, 0], [4, 0], [4, 5], [12, 5], [12, -3]]
+
+observations:
+  ref: [theta]
+  sensors: [theta, q]
+  truth: true
+
+grading:
+  scenarios:
+    - name: Pitch steps
+      seeds: 3
+      randomize:
+        initial_theta_deg: [-3, 3]
+  checks:
+    - metric: steady_state_error
+      max: 1.5
+    - metric: overshoot
+      max: 50
