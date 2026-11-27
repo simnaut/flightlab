@@ -40,9 +40,21 @@ route, and landing at another.
 
 ## 2. Big picture
 
-![The Python harness runs the sim, the student's controller, the grader and a viz server; the browser client only displays telemetry and sends interactive inputs back](docs/diagrams/big-picture.svg)
-
-<sub>Source: [`docs/diagrams/big-picture.mmd`](docs/diagrams/big-picture.mmd)</sub>
+```mermaid
+flowchart LR
+    subgraph harness["flightlab harness (Python)"]
+        CFG["Chapter config<br/>chapter.yaml"] --> SCN["Scenario<br/>refs · winds · faults"]
+        SCN --> SIM["Simulation loop"]
+        SIM --> LOG["Logger"]
+        LOG --> GRD["Grader"]
+        LOG --> SRV["Viz server<br/>live or replay"]
+    end
+    SIM -- observations --> CTL["student/chNN_MM.py<br/>Controller.update()<br/><i>the only file the student edits</i>"]
+    CTL -- Command --> SIM
+    SRV -- "telemetry frames" --> WEB["Browser client"]
+    WEB -- "interactive inputs" --> SRV
+    style CTL stroke-width:3px
+```
 
 The simulation loop runs several fixed rates on sim time:
 
@@ -87,16 +99,14 @@ grader, and the viz server. **The viz client runs in the web browser.**
   `numba` on the dynamics function can be added later without changing any
   interfaces.
 - **Viz in the browser.** `flightlab run` starts a local server and opens the
-  viewer in the student's browser (§5.1). This drops the PyQt6 dependency
-  (the heaviest install, and the reason WSL needed WSLg), works the same on
-  Linux, macOS, Windows and WSL, and gives Parts V–VI a proper 3D renderer
-  (three.js) instead of `pyqtgraph.opengl`.
+  viewer in the student's browser (§5.1). Nothing to install beyond Python
+  packages, it works the same on Linux, macOS, Windows and WSL, it can be
+  watched from another device, and Parts V–VI get a proper 3D renderer
+  (three.js).
 - **No build step for students.** The client is plain HTML, CSS and ES modules
   with vendored libraries (Preact + htm + signals for the UI, uPlot for plots),
   shipped inside the Python package. Students never install Node or run a
   bundler.
-- **One viz, not two.** The browser client replaces the earlier pyqtgraph app
-  rather than living beside it, so each new view or tool is built once.
 - **Setup:** managed with `uv` (`uv sync`, then `uv run flightlab run 1.00`) so
   there's no virtualenv or dependency wrangling for a beginner.
 
@@ -353,9 +363,22 @@ what the student does. The same client serves live runs and replays.
 
 ### 5.1 Architecture
 
-![One Python process: a sim thread that owns the clock and applies queued inputs, and an asyncio thread running a localhost websockets server that streams new log rows to the browser and enqueues the browser's inputs](docs/diagrams/viz-server.svg)
-
-<sub>Source: [`docs/diagrams/viz-server.mmd`](docs/diagrams/viz-server.mmd)</sub>
+```mermaid
+flowchart LR
+    subgraph proc["flightlab run: one Python process"]
+        subgraph simt["Sim thread"]
+            Q["Input queue"] -- "applied between physics steps" --> SIM["Simulation<br/>owns the clock"]
+            SIM -- "appends rows, 100 Hz" --> LOG["RunLog"]
+        end
+        subgraph iot["asyncio thread"]
+            SRV["websockets server<br/>localhost by default"]
+        end
+        SRV -- "enqueues inputs" --> Q
+        LOG -- "new rows, ~30 Hz" --> SRV
+    end
+    SRV -- "hello · frame (JSON)" --> WEB["Browser client<br/>static ES modules"]
+    WEB -- "kick · set_air · pause · step" --> SRV
+```
 
 #### Process model
 
@@ -384,8 +407,7 @@ what the student does. The same client serves live runs and replays.
   connected browser the log rows recorded since that browser's last frame.
 - **Locking.** The server reads the log under a lock. The sim thread holds it
   for slices of at most ~8 ms of physics steps and then yields, so a reader
-  always gets a turn even when the sim is running flat out. (Locking every
-  single step starved the reader down to ~2 frames/s.)
+  always gets a turn even when the sim is running flat out.
 - **Breakpoints.** If the student stops at a breakpoint in their controller,
   only the sim thread blocks. The server keeps sending frames, marked *busy*
   after 0.5 s, and the page shows "Waiting for your code" instead of
@@ -862,8 +884,7 @@ Part ahead of the student.
 
 | Milestone | Delivers | Unlocks |
 |---|---|---|
-| M1 ✅ | Core 6DOF `f`, RK4, `pitch_gimbal` rig, longitudinal aero, side view, plots, manual mode, kick, wind tunnel panel (airspeed + vertical flow), logging, grader, chapters 1.00–1.05 | Student starts |
-| M1b ✅ | Browser viz: viz server, sim thread + input queue, protocol, web client with side view, plots, signal picker, manual mode, kick, wind tunnel panel and replay at parity with the M1 Qt viewer; remove pyqtgraph/PyQt6 | Same chapters, no Qt |
+| M1 ✅ | Core 6DOF `f`, RK4, `pitch_gimbal` rig, longitudinal aero, browser viewer (viz server, side view, plots, signal picker, manual mode, kick, wind tunnel panel with airspeed + vertical flow, replay), logging, grader, chapters 1.00–1.05 | Student starts |
 | M2 | Actuator models, controller rate/delay, sensors (nav level), gusts, Dryden, tunnel speed profiles, CG/fuel, parameter uncertainty, chapters 1.06–1.18 | Rest of Part I |
 | M3 | Lateral aero, `roll_gimbal` and `attitude_gimbal` rigs, rear/top views, attitude indicator, wind tunnel panel lateral flow, Parts II–III | Parts II–III |
 | M4 | `heave_pitch` and `longitudinal` rigs, propulsion, stall, ISA atmosphere, scrolling side view, tapes, trim + linearize tools, Part IV | Part IV |
