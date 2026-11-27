@@ -6,7 +6,6 @@ import webbrowser
 
 from flightlab.viz.runner import Runner
 from flightlab.viz.server import ViewerServer
-from flightlab.viz.sources import LiveSource, ReplaySource  # noqa: F401  (re-exported)
 
 SCREENSHOT_SIZE = (1500, 900)
 

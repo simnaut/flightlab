@@ -68,7 +68,8 @@ def cmd_new(args):
 def cmd_run(args):
     from flightlab.loader import ControllerLoadError, load_controller
     from flightlab.sim.simulation import Simulation
-    from flightlab.viz.app import LiveSource, show
+    from flightlab.viz.app import show
+    from flightlab.viz.sources import LiveSource
 
     ch = load_chapter(args.chapter)
     mode = "manual" if args.manual else "open_loop" if args.open_loop else "controller"
@@ -110,7 +111,8 @@ def cmd_grade(args):
 def cmd_replay(args):
     from flightlab.scenario.chapter import load_chapter_file
     from flightlab.sim.log import RunLog
-    from flightlab.viz.app import ReplaySource, show
+    from flightlab.viz.app import show
+    from flightlab.viz.sources import ReplaySource
 
     folder = Path(args.folder)
     if not (folder / "meta.json").exists():
