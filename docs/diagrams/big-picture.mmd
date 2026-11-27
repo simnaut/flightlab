@@ -1,0 +1,12 @@
+flowchart LR
+    subgraph harness["flightlab harness (Python)"]
+        CFG["Chapter config<br/>chapter.yaml"] --> SCN["Scenario<br/>refs · winds · faults"]
+        SCN --> SIM["Simulation loop"]
+        SIM --> LOG["Logger"]
+        LOG --> GRD["Grader"]
+        LOG --> SRV["Viz server<br/>live or replay"]
+    end
+    SIM -- observations --> CTL["student/chNN_MM.py<br/>Controller.update()<br/>the only file the student edits"]
+    CTL -- Command --> SIM
+    SRV -- "telemetry frames" --> WEB["Browser client"]
+    WEB -- "interactive inputs" --> SRV
