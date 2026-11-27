@@ -31,7 +31,8 @@ pip install -e '.[dev]'
 flightlab list
 ```
 
-(On WSL, the viewer window needs WSLg, which is included in Windows 11.)
+`flightlab run` opens the viewer in your web browser. If no browser opens by
+itself (common on WSL), click the link it prints in the terminal.
 
 ## How it works
 
@@ -72,11 +73,28 @@ In the viewer you can **kick** the airplane, change the **wind tunnel** air
 (drag the blue arrow, or use the sliders), slow down time, and single-step your
 controller.
 
+### Viewing from another device
+
+The viewer only accepts connections from the computer running `flightlab`,
+unless you tell it otherwise. To watch from a tablet or another computer on
+the same Tailscale network or LAN, give it that computer's address (and a
+fixed port, so the address stays the same between runs):
+
+```sh
+flightlab run 1.00 --host 100.x.y.z --port 8770    # this computer's Tailscale IP
+```
+
+Open the full link it prints, including the `?token=…` part: without the token
+the page loads but can't connect. Needs a current browser (Safari 16.4+ on
+iPad).
+
 ## For instructors
 
 - `solutions/` has reference controllers for each chapter. The test suite
   checks that each one passes its chapter and that the previous chapter's
   solution does *not*, so every chapter needs its new idea.
-- Run the tests with `pytest`.
+- Run the tests with `pytest`. The browser smoke test (and the hidden
+  `--screenshot` option used for guide images) needs Playwright:
+  `uv sync --extra dev --extra browser`, then `uv run playwright install chromium`.
 - Chapter setup and pass thresholds live in `chapters/<id>/chapter.yaml`.
 - Aircraft parameters live in `aircraft/trainer.yaml`.

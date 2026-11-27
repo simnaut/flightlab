@@ -7,12 +7,14 @@ requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
     "pyyaml>=6.0",
-    "pyqtgraph>=0.13.7",
-    "PyQt6>=6.6",
+    "websockets>=14",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# Instructor tools: guide screenshots and the browser smoke test.
+# After installing, run `playwright install chromium` once.
+browser = ["playwright>=1.45"]
 
 [project.scripts]
 flightlab = "flightlab.cli:main"
@@ -23,6 +25,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["flightlab*"]
+
+[tool.setuptools.package-data]
+"flightlab.viz" = ["web/*.html", "web/*.css", "web/js/*.js", "web/vendor/*.mjs",
+                   "web/vendor/*.css", "web/vendor/*.md", "web/vendor/licenses/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
