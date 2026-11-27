@@ -40,19 +40,9 @@ route, and landing at another.
 
 ## 2. Big picture
 
-```mermaid
-flowchart LR
-    subgraph harness["flightlab harness"]
-        CFG["Chapter config<br/>chapter.yaml"] --> SCN["Scenario<br/>refs · winds · faults"]
-        SCN --> SIM["Simulation loop"]
-        SIM --> LOG["Logger"]
-        LOG --> GRD["Grader"]
-        LOG --> VIZ["Viz<br/>live or replay"]
-    end
-    SIM -- observations --> CTL["student/chNN_MM.py<br/>Controller.update()<br/><i>the only file the student edits</i>"]
-    CTL -- Command --> SIM
-    style CTL stroke-width:3px
-```
+![The Python harness runs the sim, the student's controller, the grader and a viz server; the browser client only displays telemetry and sends interactive inputs back](docs/diagrams/big-picture.svg)
+
+<sub>Source: [`docs/diagrams/big-picture.mmd`](docs/diagrams/big-picture.mmd)</sub>
 
 The simulation loop runs several fixed rates on sim time:
 
@@ -75,27 +65,38 @@ sequenceDiagram
     end
 ```
 
-Sim time is authoritative. The viz shows the sim as fast as it can up to the
-selected playback speed (0.25×, 1×, 4×…); headless runs go as fast as the CPU
-allows.
+Sim time is authoritative. In live runs, the Python side paces the sim against
+the wall clock up to the selected playback speed (0.25×, 1×, 4×…) and the
+browser only displays it; headless runs go as fast as the CPU allows.
 
 ### 2.1 Technology choices
 
-**Everything is Python**: the student's controller, the sim, and the viz.
+**Everything the student touches is Python**: the controller, the sim, the
+grader, and the viz server. **The viz client runs in the web browser.**
 
 - **One language for the student.** He can read the plant he's controlling
   (e.g., `models/aero.py` is the Cm equation from his textbook), set
   breakpoints across the controller/sim boundary, and modify the physics to
-  experiment. A compiled sim would be a black box behind a build system.
-- **Speed is adequate.** A numpy 6DOF RK4 step costs well under 1 ms, so the sim
-  runs several times faster than real time. If headless grading over many seeds
-  gets slow, `numba` on the dynamics function can be added later without
-  changing any interfaces.
-- **Viz is decoupled.** The sim publishes a telemetry frame each viz tick
-  (and writes the same frames to the run log). The pyqtgraph app is just one
-  consumer. If a nicer 3D view is wanted for Part VI, a browser front end
-  (three.js over a local websocket) can be added as a second consumer, live or
-  from replay, without touching the sim or the student's code.
+  experiment. A compiled sim would be a black box behind a build system. The
+  browser client is presentation only: no physics, no control logic, nothing
+  that changes a run's result.
+- **Speed is adequate.** A numpy 6DOF RK4 step costs about 0.8 ms (measured
+  on the M1 pitch rig), so the sim runs about 3× faster than real time:
+  plenty for live viewing at 1×, and the viewer says when a faster playback
+  speed can't be reached. If headless grading over many seeds gets slow,
+  `numba` on the dynamics function can be added later without changing any
+  interfaces.
+- **Viz in the browser.** `flightlab run` starts a local server and opens the
+  viewer in the student's browser (§5.1). This drops the PyQt6 dependency
+  (the heaviest install, and the reason WSL needed WSLg), works the same on
+  Linux, macOS, Windows and WSL, and gives Parts V–VI a proper 3D renderer
+  (three.js) instead of `pyqtgraph.opengl`.
+- **No build step for students.** The client is plain HTML, CSS and ES modules
+  with vendored libraries (Preact + htm + signals for the UI, uPlot for plots),
+  shipped inside the Python package. Students never install Node or run a
+  bundler.
+- **One viz, not two.** The browser client replaces the earlier pyqtgraph app
+  rather than living beside it, so each new view or tool is built once.
 - **Setup:** managed with `uv` (`uv sync`, then `uv run flightlab run 1.00`) so
   there's no virtualenv or dependency wrangling for a beginner.
 
@@ -316,7 +317,7 @@ I_{yy}\,\dot{q} = \bar{q}\,S\,\bar{c}\left(C_{m_0} + C_{m_\alpha}\,\alpha + C_{m
 - Discrete gusts: step and "1 − cosine" shapes, vertical/longitudinal/lateral.
 - Continuous turbulence: Dryden model, intensity levels (light/moderate).
 - Tunnel airspeed profile (gimbal rigs): constant, steps, slow sinusoid.
-- Live air-vector override (stand rigs only, see §5.3): an offset the student
+- Live air-vector override (stand rigs only, see §5.4): an offset the student
   sets from the viz, added on top of the scenario's scripted air vector.
 - Parameter uncertainty: truth model parameters randomly perturbed (e.g., ±10%
   on derivatives) per seeded scenario, so tuning against one run isn't enough.
@@ -346,11 +347,144 @@ Noise and bias statistics are published in `info.sensors` (not hidden).
 
 ## 5. Visualization
 
-Built with **pyqtgraph + PyQt6**: fast enough for real-time rolling plots, and
-can draw the aircraft views in the same window (one toolkit instead of mixing
-pygame and matplotlib). Optional 3D chase view via `pyqtgraph.opengl`.
+A **browser client** served by the Python process that runs the sim. Python owns
+the simulation and its clock; the browser draws what it is sent and sends back
+what the student does. The same client serves live runs and replays.
 
-### 5.1 Layout
+### 5.1 Architecture
+
+![One Python process: a sim thread that owns the clock and applies queued inputs, and an asyncio thread running a localhost websockets server that streams new log rows to the browser and enqueues the browser's inputs](docs/diagrams/viz-server.svg)
+
+<sub>Source: [`docs/diagrams/viz-server.mmd`](docs/diagrams/viz-server.mmd)</sub>
+
+#### Process model
+
+- `flightlab run 1.03` (and `replay`) starts one Python process. It serves the
+  viewer on `127.0.0.1` on a free port, prints the URL, and opens it with
+  `webbrowser`. If no browser opens (common on WSL, or on a headless machine),
+  the student clicks the printed URL. **Ctrl+C** in the terminal ends the run
+  and saves the log for `flightlab replay latest`. Closing the tab doesn't stop
+  anything, and a reload reconnects.
+- **Other devices.** `--host <address>` serves on another interface, e.g. the
+  machine's Tailscale IP, to watch from a tablet; `--port` fixes the port so
+  the address stays the same between runs. The default stays localhost-only.
+- **Sim thread** (`viz/runner.py`). Wakes at 60 Hz, applies queued inputs, and
+  advances the sim by `elapsed wall time × speed` unless paused. Pause,
+  single-step (one controller period), playback speed and reset are Python
+  state, not client state.
+  - The sim moves in whole 2.5 ms physics steps, so each tick lands up to one
+    step past its target. The next tick aims from the *intended* sim time,
+    not from where the sim landed, so 1× stays at real time instead of
+    drifting fast.
+  - It measures the speed it actually achieves. If the sim can't keep up with
+    the selected speed, the status bar says so.
+- **Server thread** (`viz/server.py`). An asyncio event loop running the
+  `websockets` library. It serves the static client files over HTTP and the
+  WebSocket at `/ws` on the same port. About 30 times a second it sends each
+  connected browser the log rows recorded since that browser's last frame.
+- **Locking.** The server reads the log under a lock. The sim thread holds it
+  for slices of at most ~8 ms of physics steps and then yields, so a reader
+  always gets a turn even when the sim is running flat out. (Locking every
+  single step starved the reader down to ~2 frames/s.)
+- **Breakpoints.** If the student stops at a breakpoint in their controller,
+  only the sim thread blocks. The server keeps sending frames, marked *busy*
+  after 0.5 s, and the page shows "Waiting for your code" instead of
+  disconnecting.
+- **Inputs go through a queue.** The server never calls into `Simulation`
+  directly. Inputs are queued and the sim thread applies them between physics
+  steps, then logs them as timestamped events (§5.5). Every input lands at a
+  definite sim time, so replays stay exact.
+- **Errors.** A `ControllerError` or `SimulationError` pauses the run. The
+  browser shows the message and the student's traceback, which is also printed
+  in the terminal. Play is disabled until Reset.
+
+#### Protocol
+
+JSON messages over one WebSocket, each with a `type` field. Rows arrive at
+the 100 Hz log rate with a few dozen channels, about 40 KiB/s at 1×, so JSON
+is fine. Binary `Float64Array` frames are an optimization to add only if a
+later Part needs it. NaN values are sent as `null`.
+
+**Server → browser**
+
+| `type` | When | Contents |
+|---|---|---|
+| `hello` | on connect | protocol version, chapter (id, title, rig, duration), mode (`controller` / `manual` / `open_loop` / `replay`), `live`, controller period, tunnel defaults and slider ranges, manual elevator range; for replays, the run's duration |
+| `frame` | ~30 Hz | `state`: sim time, run state (`running` / `paused` / `finished` / `error`), selected and achieved speed, `busy`, reset `generation`, the error (message + student traceback) if any, and, for live runs, manual mode, manual elevator and the wind tunnel target. `rows`: new log rows in columnar form (`{"t": [...], "theta": [...], "log.error_deg": [...]}`), without the raw `x.*` state-vector channels. `reset: true` means "clear and start over" |
+
+A browser that connects (or reconnects, or connects after a reset) gets a
+`reset` frame with the last 30 s of log first. Student `self.log()` channels
+are just more `log.*` columns, so the signal picker finds new ones as they
+appear. On connect and after a reset the browser takes its control values
+(manual mode, elevator, air target) from `state`. Otherwise its controls stay
+authoritative.
+
+**Browser → server**
+
+| `type` | Fields | Maps to |
+|---|---|---|
+| `pause` / `resume` / `step` | — | sim-thread clock (`step` pauses, then advances one controller period) |
+| `speed` | `value` (0.05–16) | playback speed |
+| `reset` | — | saves the run so far, then `Simulation.reset()`; manual mode and elevator carry over |
+| `kick` | `sign` | `Simulation.kick()` |
+| `set_air` | `airspeed` (m/s), `flow_angle` (rad), `smooth` | `Simulation.set_air()` |
+| `reset_air` | `smooth` | `Simulation.reset_air()` |
+| `manual` | `enabled` | `Simulation.set_manual()` |
+| `elevator` | `value` (rad) | `Simulation.set_manual_elevator()` |
+
+Malformed or unknown messages are ignored. In replay mode only the clock
+messages (pause, resume, step, speed, reset) apply. Planned with later
+milestones: `seek` for replays, `overlay` (a previous run's traces faded
+behind the live ones, §5.4), and new inputs per Part (`gust`, `aileron`,
+`rudder`, `throttle`, lateral flow) alongside the `Simulation` methods they
+call.
+
+**Security.** By default the server listens on localhost only. The URL
+carries a random per-run token that the WebSocket handshake must present
+(compared in constant time). Any web page can try to open a WebSocket to
+localhost, so without the token another site could drive the student's run.
+Static files need no token, since they're the same for everyone. With
+`--host`, anyone who can reach that address can load the page, but only
+someone with the printed link can connect to the run.
+
+#### Client
+
+- **No build step.** `flightlab/viz/web/` holds `index.html`, `app.css` and
+  ES modules loaded directly by the browser. An import map in `index.html`
+  maps bare names (`preact`, `uplot`, …) to vendored single files in
+  `web/vendor/`, whose `README.md` lists each library's version, source file
+  and license. They're shipped as package data. Nothing is fetched from a CDN,
+  so the viewer works offline. Updating a library means replacing one file;
+  nobody needs Node.
+- **UI framework:** [Preact](https://preactjs.com) with
+  [htm](https://github.com/developit/htm) (tagged templates instead of JSX, so
+  no compiler) and [@preact/signals](https://github.com/preactjs/signals).
+  Preact renders the layout and every control. Signals hold connection,
+  run state, control values and the signal list, so a change re-renders only
+  what reads it. About 25 KB in all.
+- **Drawing stays outside Preact.** The side view and the plots are plain
+  classes that Preact mounts once. A `requestAnimationFrame` loop redraws them
+  from the telemetry store (`js/store.js`, the last 60 s of rows) only when a
+  new frame has arrived. This keeps 30 fps cheap, and it's the pattern the
+  three.js view will use too.
+- **Plots:** [uPlot](https://github.com/leeoniya/uPlot), rolling 20 s window.
+  Flat traces get at least a ±1 y-range, instead of uPlot's default 0–100.
+- **Aircraft views:** SVG. The side view (`js/side_view.js`) draws in world
+  meters inside a `scale(1,-1)` group, so the geometry and rotation signs match
+  the physics (x forward, y up, positive rotation = nose up). The air arrow's
+  handle is dragged with pointer events, so it works with a mouse or touch.
+  three.js comes in for the optional 3D chase view (M6).
+- **Keyboard:** ↑/↓ move the elevator by 0.5° and switch to manual, Space
+  centers it, P pauses.
+- **Files:** `main.js` (signals, components, render loop), `connection.js`
+  (WebSocket with reconnect), `store.js`, `side_view.js`, `plots.js`,
+  `theme.js` (shared colors).
+- **Screenshots for chapter guides:** the hidden `--screenshot PATH --until T
+  [--kick-at T]` options advance the sim headless, then capture the page with
+  Playwright's headless Chromium. Playwright is in the optional `browser`
+  extra, so students don't install it.
+
+### 5.2 Layout
 
 ```
 ┌──────────────────────────────┬───────────────────────────────┐
@@ -365,7 +499,7 @@ pygame and matplotlib). Optional 3D chase view via `pyqtgraph.opengl`.
 └──────────────────────────────┴───────────────────────────────┘
 ```
 
-### 5.2 Views by Part
+### 5.3 Views by Part
 
 | Part | Aircraft views |
 |---|---|
@@ -373,9 +507,9 @@ pygame and matplotlib). Optional 3D chase view via `pyqtgraph.opengl`.
 | II (roll rig) | Rear view: bank angle, aileron deflection |
 | III (attitude rig) | Side + rear + top views, attitude indicator |
 | IV (longitudinal) | Scrolling side view with terrain line, altitude and speed tapes |
-| V–VI (free) | Top-down map (route, runways, ground track), vertical profile (altitude vs distance, glidepath), primary flight display, optional 3D chase camera |
+| V–VI (free) | Top-down map (route, runways, ground track), vertical profile (altitude vs distance, glidepath), primary flight display, optional 3D chase camera (three.js) |
 
-### 5.3 Interactive tools
+### 5.4 Interactive tools
 
 - **Pause / single-step / playback speed.**
 - **Kick:** applies a moment impulse about the free axis. This is the quickest
@@ -384,8 +518,8 @@ pygame and matplotlib). Optional 3D chase view via `pyqtgraph.opengl`.
 - **Manual mode:** slider/keyboard control of the surfaces, so the student can
   try flying it by hand before automating it. Doing this at the start of a Part
   is part of the chapter guide.
-- **Overlay reference run:** show a previous run's traces faded behind the live
-  ones.
+- **Overlay reference run** (planned, M2): show a previous run's traces faded
+  behind the live ones.
 
 #### Wind tunnel panel (stand chapters, Parts I–III)
 
@@ -420,15 +554,16 @@ in real time and watch their controller respond.
 - **Free-flight chapters** (Parts IV–VI) keep the gust button but not this
   panel; there, wind comes from the scenario.
 
-### 5.4 Logging and replay
+### 5.5 Logging and replay
 
-Every run writes `runs/<timestamp>_<chapter>/` with full state, commands,
+Every graded run, and every live run when it ends (Ctrl+C) or is reset after
+more than 1 s, writes `runs/<timestamp>_<chapter>_<label>/` with full state, commands,
 sensors, student telemetry (`.npz`/CSV), the resolved config, and the seed.
 Interactive inputs (wind tunnel panel, kicks, gust button, manual surface
 commands) are logged as timestamped events, so a replay reproduces the run
 exactly. Runs with interactive inputs are marked *sandbox*; grading always
 uses the scripted, headless scenarios.
-Replay uses the same viz. Logs can also be loaded in a notebook for analysis.
+Replay uses the same browser client, fed from the saved log instead of a live sim. Logs can also be loaded in a notebook for analysis.
 
 ---
 
@@ -646,7 +781,12 @@ flightlab/
                  actuators.py, sensors.py, wind.py (gusts, Dryden)
   scenario/      config loading, references, flight plan, mission sequencer
   analysis/      trim.py, linearize.py, metrics.py
-  viz/           app.py, views/ (side, rear, top, map, profile, pfd, chase3d), plots.py
+  viz/           app.py (show: start runner + server, open browser, screenshots),
+                 runner.py (sim thread, clock, input queue), server.py (HTTP +
+                 WebSocket, token), sources.py (live / replay)
+    web/         index.html (import map), app.css, js/ (main, connection, store,
+                 side_view, plots, theme; later rear, top, map, profile, pfd,
+                 chase3d), vendor/ (Preact, htm, signals, uPlot; three.js in M6)
   cli.py
 aircraft/trainer.yaml
 chapters/<n.nn_name>/{chapter.yaml, GUIDE.md}
@@ -656,10 +796,21 @@ tests/           physics sanity tests, chapter solvability tests
 runs/            run logs (gitignored)
 ```
 
-**Dependencies:** Python 3.11+, numpy, scipy, PyYAML, pyqtgraph, PyQt6.
+**Dependencies:** Python 3.11+, numpy, scipy, PyYAML, websockets, and a
+current web browser (import maps: Chrome/Edge 89+, Firefox 108+, Safari 16.4+).
+Vendored client libraries: Preact, htm, @preact/signals, uPlot, three.js (M6).
+Extras: `dev` (pytest), `browser` (Playwright, for guide screenshots and the
+browser smoke test; then `playwright install chromium`).
 Optional: python-control (Bode/root-locus for the curious), numba (speed).
 
 **Harness verification:**
+- Viz tests (`tests/test_viewer.py`): static files are served and can't
+  escape `web/`; the WebSocket rejects a wrong token; headless protocol checks
+  (hello, frames, inputs logged as events, pause/step timing, reset, malformed
+  messages ignored); a controller error pauses the run and blocks resume. A
+  Playwright smoke test (skipped without Chromium) opens the page, clicks Kick,
+  flies with ↑, drags the air arrow and pauses, then checks those inputs
+  reached the sim log with no browser console errors.
 - Physics tests: energy and momentum sanity checks, trim matches the textbook
   aircraft's published values, open-loop modes (short period, phugoid, Dutch
   roll, roll, spiral) have the expected frequencies and damping.
@@ -712,11 +863,12 @@ Part ahead of the student.
 | Milestone | Delivers | Unlocks |
 |---|---|---|
 | M1 ✅ | Core 6DOF `f`, RK4, `pitch_gimbal` rig, longitudinal aero, side view, plots, manual mode, kick, wind tunnel panel (airspeed + vertical flow), logging, grader, chapters 1.00–1.05 | Student starts |
+| M1b ✅ | Browser viz: viz server, sim thread + input queue, protocol, web client with side view, plots, signal picker, manual mode, kick, wind tunnel panel and replay at parity with the M1 Qt viewer; remove pyqtgraph/PyQt6 | Same chapters, no Qt |
 | M2 | Actuator models, controller rate/delay, sensors (nav level), gusts, Dryden, tunnel speed profiles, CG/fuel, parameter uncertainty, chapters 1.06–1.18 | Rest of Part I |
 | M3 | Lateral aero, `roll_gimbal` and `attitude_gimbal` rigs, rear/top views, attitude indicator, wind tunnel panel lateral flow, Parts II–III | Parts II–III |
 | M4 | `heave_pitch` and `longitudinal` rigs, propulsion, stall, ISA atmosphere, scrolling side view, tapes, trim + linearize tools, Part IV | Part IV |
 | M5 | `free` rig, map/profile/PFD views, waypoint references, Part V | Part V |
-| M6 | Ground/gear model, runways, flight plan, mission sequencer, ground effect, wind shear, crash detection, optional 3D chase view, Part VI | Part VI |
+| M6 | Ground/gear model, runways, flight plan, mission sequencer, ground effect, wind shear, crash detection, optional 3D chase view (three.js), Part VI | Part VI |
 | M7 (opt.) | Raw sensor level, nominal-model packaging polish, example notebook using `linearize` | Modern methods |
 
 Since M1 already builds the full 6DOF `f` (with lateral terms zeroed or unused),
