@@ -60,6 +60,11 @@ dynamics text under "longitudinal static stability".
    flightlab run 1.00 --open-loop
    ```
 
+   The viewer opens in your web browser. If it doesn't, click the link printed
+   in the terminal. When you're done, press **Ctrl+C** in the terminal: that
+   ends the run and saves it, so `flightlab replay latest` can show it again.
+   Closing the browser tab doesn't stop anything; reload the page to get back.
+
    The aircraft starts 10° nose-up. Watch it swing down, overshoot, and settle.
    Where does it settle? (Not at 0°!)
 

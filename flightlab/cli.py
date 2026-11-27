@@ -89,8 +89,9 @@ def cmd_run(args):
     sim = Simulation(ch, controller, mode=mode, controller_path=path)
     actions = []
     if args.kick_at is not None:
-        actions.append((args.kick_at, lambda win: win._kick(+1)))
-    show(LiveSource(sim), ch, screenshot=args.screenshot, until=args.until, actions=actions)
+        actions.append((args.kick_at, {"type": "kick", "sign": 1}))
+    show(LiveSource(sim), ch, screenshot=args.screenshot, until=args.until, actions=actions,
+         host=args.host, port=args.port)
     return 0
 
 
@@ -126,8 +127,17 @@ def cmd_replay(args):
     log = RunLog.load(folder)
     ch = load_chapter(log.meta["chapter"])
     print(f"Replaying {folder}")
-    show(ReplaySource(log), ch, screenshot=args.screenshot, until=args.until)
+    show(ReplaySource(log), ch, screenshot=args.screenshot, until=args.until,
+         host=args.host, port=args.port)
     return 0
+
+
+def _viewer_args(p):
+    p.add_argument("--host", default="127.0.0.1",
+                   help="address the viewer listens on (default: this computer only). "
+                        "Use your Tailscale/LAN IP to open the viewer from another device.")
+    p.add_argument("--port", type=int, default=0,
+                   help="viewer port (default: any free port)")
 
 
 def main(argv=None):
@@ -146,7 +156,7 @@ def main(argv=None):
     p.add_argument("chapter")
     p.set_defaults(fn=cmd_new)
 
-    p = sub.add_parser("run", help="run a chapter with the live viewer")
+    p = sub.add_parser("run", help="run a chapter in the live viewer (opens in your browser)")
     p.add_argument("chapter")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--manual", action="store_true", help="fly it yourself")
@@ -155,6 +165,7 @@ def main(argv=None):
     p.add_argument("--screenshot", help=argparse.SUPPRESS)
     p.add_argument("--until", type=float, help=argparse.SUPPRESS)
     p.add_argument("--kick-at", type=float, help=argparse.SUPPRESS)
+    _viewer_args(p)
     p.set_defaults(fn=cmd_run)
 
     p = sub.add_parser("grade", help="grade a chapter (headless)")
@@ -167,6 +178,7 @@ def main(argv=None):
     p.add_argument("folder")
     p.add_argument("--screenshot", help=argparse.SUPPRESS)
     p.add_argument("--until", type=float, help=argparse.SUPPRESS)
+    _viewer_args(p)
     p.set_defaults(fn=cmd_replay)
 
     args = parser.parse_args(argv)
