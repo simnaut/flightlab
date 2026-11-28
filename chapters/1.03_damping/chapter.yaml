@@ -33,3 +33,8 @@ grading:
       max: 10
     - metric: settling_time
       max: 1.0
+
+# What appears in the viewer from this chapter on (see VIEWER_FEATURES in
+# flightlab/scenario/chapter.py). Earlier chapters' elements stay.
+viewer:
+  unlock: [pitch_rate]

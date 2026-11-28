@@ -19,6 +19,21 @@ DEFAULTS = {
     "reference": {},
     "observations": {"ref": [], "sensors": [], "truth": False},
     "grading": None,
+    "viewer": {"unlock": []},
+}
+
+# Viewer elements a chapter can unlock (chapter.yaml: viewer.unlock). Each one
+# stays visible in every later chapter, so the viewer grows with the course.
+# Always shown: the aircraft, the pitch and elevator plots, play/pause, reset.
+# "Your signals" appears by itself once the controller calls self.log().
+VIEWER_FEATURES = {
+    "kick": "Kick buttons",
+    "manual": "Fly by hand (slider and arrow keys)",
+    "tunnel": "Wind tunnel panel, air arrow, angle of attack (side view, readout, pitch plot), tunnel plot",
+    "theta_cmd": "Commanded pitch angle (plot trace and readout)",
+    "sim_step": "Step button and playback speed",
+    "pitch_rate": "Pitch rate plot and readout",
+    "elevator_cmd": "Commanded vs actual elevator (plot trace and ghost surface)",
 }
 
 
@@ -85,8 +100,23 @@ def load_chapter_file(path):
         raw = yaml.safe_load(f) or {}
     config = _merge(DEFAULTS, raw)
     cid = normalize_id(raw.get("id", path.parent.name))
+    unknown = set(config["viewer"]["unlock"]) - set(VIEWER_FEATURES)
+    if unknown:
+        raise ValueError(f"{path}: unknown viewer.unlock entries {sorted(unknown)}; "
+                         f"known: {sorted(VIEWER_FEATURES)}")
     return Chapter(id=cid, title=raw.get("title", path.parent.name), folder=path.parent,
                    config=config)
+
+
+def viewer_features(chapter):
+    """Viewer elements unlocked by this chapter and every chapter before it."""
+    key = tuple(int(p) for p in chapter.id.split("."))
+    unlocked = set()
+    for ch in all_chapters():
+        if tuple(int(p) for p in ch.id.split(".")) <= key:
+            unlocked.update(ch.config["viewer"]["unlock"])
+    unlocked.update(chapter.config["viewer"]["unlock"])
+    return sorted(unlocked)
 
 
 def load_chapter(chapter_id):

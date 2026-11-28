@@ -46,7 +46,7 @@ C_m = C_{m_0} + C_{m_\alpha}\,\alpha + C_{m_q}\,\frac{q\,\bar{c}}{2V} + C_{m_{\d
   nose-up.
 
 On the stand the air is horizontal, so **α = θ**, at least until you tilt the
-air (see below).
+air (next chapter).
 
 Find these in `flightlab/models/aero.py` and the numbers in
 `aircraft/trainer.yaml`. Read along in Beard & McLain ch. 4 or any flight
@@ -66,26 +66,22 @@ dynamics text under "longitudinal static stability".
    Closing the browser tab doesn't stop anything; reload the page to get back.
 
    The aircraft starts 10° nose-up. Watch it swing down, overshoot, and settle.
-   Where does it settle? (Not at 0°!)
+   How many swings before it stops? Where does it settle? (Not at 0°!) Press
+   **Reset** to watch it again.
 
-2. **Kick it.** Press **Kick ▲** and **Kick ▼** a few times. How long does the
-   wobble last? How many swings before it stops?
-
-3. **Fly it by hand.**
+2. **Fly it by hand.**
 
    ```
    flightlab run 1.00 --manual
    ```
 
    Use the slider or the arrow keys (↓ = pull = nose up, ↑ = push = nose down).
-   Try to hold the nose exactly level (θ = 0). Turn on **Elevator ×3** to see
-   the elevator move.
+   Try to hold the nose exactly level (θ = 0). Watch the orange elevator at the
+   tail: small moves are drawn enlarged so you can see them, while the plot and
+   the readout show the true angle.
 
-4. **Play with the wind tunnel.** Drag the blue arrow or use the sliders:
-   - Change the **airspeed**. Does the aircraft swing faster or slower after a
-     kick at 25 m/s vs 70 m/s?
-   - Tilt the air with the **flow angle** (up-flow is positive). Watch θ and α
-     separate: α = θ + flow angle. This is what a gust does to an airplane.
+The viewer starts simple: the aircraft, a pitch plot, an elevator plot, and a
+few buttons. More appears as the chapters need it.
 
 ## Your task
 
@@ -98,8 +94,6 @@ Write short answers in `student/notes.md`:
 
 1. With the elevator at zero, the aircraft settled at about +3.7°. Use the
    $`C_m`$ equation to explain why. (Hint: what is $`C_m`$ when it stops moving?)
-2. After a kick, the aircraft oscillates and then stops. Which derivative makes
-   it come back, and which makes it stop swinging?
-3. At higher airspeed, does it swing faster or slower? Why? (Look at
-   $`\bar{q}`$.)
-4. Holding level by hand: what elevator angle did you end up using?
+2. Released at 10°, the aircraft oscillates and then stops. Which derivative
+   makes it come back, and which makes it stop swinging?
+3. Holding level by hand: what elevator angle did you end up using?

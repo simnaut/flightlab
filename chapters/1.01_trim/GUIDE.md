@@ -7,6 +7,10 @@ You write your first controller. It's the simplest possible one: a
 aircraft steady is called **trimming**, and every aircraft and every control
 system starts from a trim point.
 
+**New in the viewer:** the **wind tunnel** panel and the blue air arrow, the
+angle of attack α (in the side view, the readout and the pitch plot), and a
+plot of the tunnel air.
+
 ## Physics you need
 
 The aircraft stops rotating when the pitching moment is zero:
@@ -28,6 +32,18 @@ flightlab run 1.01
 
 Your new file `student/ch01_01.py` returns zero elevator. The aircraft settles
 at about +3.7°, not level.
+
+Before fixing that, meet the wind tunnel. Drag the blue arrow or use the
+sliders:
+
+- Change the **airspeed** to 25 m/s, choose **Step**, and flick the flow
+  angle up a few degrees: the sudden gust makes the aircraft swing. Do the
+  same at 70 m/s. Does it swing faster or slower?
+- Tilt the air with the **flow angle** (up-flow is positive). Watch θ and α
+  separate in the pitch plot: α = θ + flow angle. This is what a gust does to
+  an airplane.
+
+Press **Reset air** when you're done.
 
 ## Your task
 
@@ -65,9 +81,9 @@ The grader starts the aircraft at three different random pitch angles between
 - Change the airspeed with the wind tunnel slider while your trim controller
   runs. Does the aircraft stay level? (Look at the $`C_m`$ equation: does
   airspeed appear in it?)
-- Tilt the air with the flow angle slider. Now what happens, and why?
-- Kick it. Does your controller help it recover? (It can't: it doesn't even
-  look at the observations. That's next chapter.)
+- Tilt the air with the flow angle slider. Now what happens, and why? Does
+  your controller fight back? (It can't: it doesn't even look at the
+  observations. That's next chapter.)
 
 ## Questions
 
@@ -76,3 +92,5 @@ The grader starts the aircraft at three different random pitch angles between
    trailing edge point?
 3. Your controller is **open loop**: it never checks what the aircraft is doing.
    What could go wrong with an open-loop controller on a real airplane?
+4. At higher airspeed, does the aircraft swing faster or slower after a gust?
+   Why? (Look at $`\bar{q}`$.)

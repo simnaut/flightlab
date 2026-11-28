@@ -327,7 +327,7 @@ I_{yy}\,\dot{q} = \bar{q}\,S\,\bar{c}\left(C_{m_0} + C_{m_\alpha}\,\alpha + C_{m
 - Discrete gusts: step and "1 − cosine" shapes, vertical/longitudinal/lateral.
 - Continuous turbulence: Dryden model, intensity levels (light/moderate).
 - Tunnel airspeed profile (gimbal rigs): constant, steps, slow sinusoid.
-- Live air-vector override (stand rigs only, see §5.4): an offset the student
+- Live air-vector override (stand rigs only, see §5.5): an offset the student
   sets from the viz, added on top of the scenario's scripted air vector.
 - Parameter uncertainty: truth model parameters randomly perturbed (e.g., ±10%
   on derivatives) per seeded scenario, so tuning against one run isn't enough.
@@ -414,7 +414,7 @@ flowchart LR
   disconnecting.
 - **Inputs go through a queue.** The server never calls into `Simulation`
   directly. Inputs are queued and the sim thread applies them between physics
-  steps, then logs them as timestamped events (§5.5). Every input lands at a
+  steps, then logs them as timestamped events (§5.6). Every input lands at a
   definite sim time, so replays stay exact.
 - **Errors.** A `ControllerError` or `SimulationError` pauses the run. The
   browser shows the message and the student's traceback, which is also printed
@@ -431,7 +431,7 @@ later Part needs it. NaN values are sent as `null`.
 
 | `type` | When | Contents |
 |---|---|---|
-| `hello` | on connect | protocol version, chapter (id, title, rig, duration), mode (`controller` / `manual` / `open_loop` / `replay`), `live`, controller period, tunnel defaults and slider ranges, manual elevator range; for replays, the run's duration |
+| `hello` | on connect | protocol version, chapter (id, title, rig, duration), mode (`controller` / `manual` / `open_loop` / `replay`), `live`, controller period, tunnel defaults and slider ranges, manual elevator range, unlocked viewer `features` (§5.3); for replays, the run's duration |
 | `frame` | ~30 Hz | `state`: sim time, run state (`running` / `paused` / `finished` / `error`), selected and achieved speed, `busy`, reset `generation`, the error (message + student traceback) if any, and, for live runs, manual mode, manual elevator and the wind tunnel target. `rows`: new log rows in columnar form (`{"t": [...], "theta": [...], "log.error_deg": [...]}`), without the raw `x.*` state-vector channels. `reset: true` means "clear and start over" |
 
 A browser that connects (or reconnects, or connects after a reset) gets a
@@ -457,7 +457,7 @@ authoritative.
 Malformed or unknown messages are ignored. In replay mode only the clock
 messages (pause, resume, step, speed, reset) apply. Planned with later
 milestones: `seek` for replays, `overlay` (a previous run's traces faded
-behind the live ones, §5.4), and new inputs per Part (`gust`, `aileron`,
+behind the live ones, §5.5), and new inputs per Part (`gust`, `aileron`,
 `rudder`, `throttle`, lateral flow) alongside the `Simulation` methods they
 call.
 
@@ -494,7 +494,10 @@ someone with the printed link can connect to the run.
 - **Aircraft views:** SVG. The side view (`js/side_view.js`) draws in world
   meters inside a `scale(1,-1)` group, so the geometry and rotation signs match
   the physics (x forward, y up, positive rotation = nose up). The air arrow's
-  handle is dragged with pointer events, so it works with a mouse or touch.
+  handle is dragged with pointer events, so it works with a mouse or touch. On
+  touch screens (`any-pointer: coarse`) the handle is drawn about twice as big,
+  with a larger invisible grab area, and the view ignores browser panning and
+  zooming while you drag.
   three.js comes in for the optional 3D chase view (M6).
 - **Keyboard:** ↑/↓ move the elevator by 0.5° and switch to manual, Space
   centers it, P pauses.
@@ -508,30 +511,65 @@ someone with the printed link can connect to the run.
 
 ### 5.2 Layout
 
+The full layout, once every Part I element is unlocked (§5.3):
+
 ```
 ┌──────────────────────────────┬───────────────────────────────┐
-│                              │  θ, θ_cmd           (rolling) │
+│                              │  θ_cmd, α, θ        (rolling) │
 │   Aircraft view(s)           ├───────────────────────────────┤
-│   (depends on Part)          │  α, q                         │
+│   (depends on Part)          │  q                            │
 │                              ├───────────────────────────────┤
-│                              │  δe_cmd, δe_actual            │
+│                              │  δe (cmd vs actual later)     │
+│                              ├───────────────────────────────┤
+│                              │  tunnel airspeed, flow angle  │
 ├──────────────────────────────┼───────────────────────────────┤
 │ ▶ ❚❚ ⏭ step  speed 1×  reset │  student self.log() signals   │
 │ [kick] [gust] [manual] [air] │  (selectable)                 │
 └──────────────────────────────┴───────────────────────────────┘
 ```
 
-### 5.3 Views by Part
+### 5.3 What appears when
+
+The viewer shows only what the current chapter needs, so a beginner isn't
+facing every plot and control on day one. Each chapter's `chapter.yaml` lists
+the viewer elements it **unlocks**. The viewer shows everything unlocked by
+that chapter and all earlier ones, so elements appear as the course reaches
+them and then stay:
+
+```yaml
+viewer:
+  unlock: [theta_cmd, sim_step]
+```
+
+The known names live in `VIEWER_FEATURES` (`flightlab/scenario/chapter.py`),
+and a typo fails chapter loading. The server sends the resolved list in
+`hello.features`.
+
+| Chapter | Unlocks | Why there |
+|---|---|---|
+| always | aircraft side view, pitch and elevator plots, Play/Pause, Reset | the minimum to watch the aircraft |
+| 1.00 | `manual` | the guide flies it by hand |
+| 1.01 | `tunnel`: wind tunnel panel, air arrow, α (side view, readout, pitch plot), tunnel plot | first tunnel exercises (airspeed vs swing rate, α = θ + flow angle) |
+| 1.02 | `theta_cmd` (command trace and readout), `sim_step` (Step button, playback speed), `kick` | the command starts changing; the guide slows replays down; with feedback, a kick shows the controller fighting back (before that, the open-loop release at 10° already shows the swing) |
+| 1.03 | `pitch_rate` (q plot and readout) | D control feeds back q |
+| 1.07–1.08 (planned) | `elevator_cmd` (cmd vs actual trace, ghost surface) | rate limits and servo lag make them differ |
+
+Two things don't need unlocking: the **Your signals** plot and picker appear as
+soon as the controller calls `self.log()`, and `--manual` always shows the
+manual controls. A chapter guide that unlocks something says so in a short
+**New in the viewer** line under "What's new".
+
+### 5.4 Views by Part
 
 | Part | Aircraft views |
 |---|---|
-| I (pitch rig) | Side view on stand: wind arrows (length ∝ airspeed, tilt = gust), velocity vector, α arc, elevator drawn with optional ×3 exaggeration |
+| I (pitch rig) | Side view on stand: wind arrows (length ∝ airspeed, tilt = gust), velocity vector, α arc, elevator with small deflections drawn enlarged (about ×3 near zero, fading to true size near the limit) |
 | II (roll rig) | Rear view: bank angle, aileron deflection |
 | III (attitude rig) | Side + rear + top views, attitude indicator |
 | IV (longitudinal) | Scrolling side view with terrain line, altitude and speed tapes |
 | V–VI (free) | Top-down map (route, runways, ground track), vertical profile (altitude vs distance, glidepath), primary flight display, optional 3D chase camera (three.js) |
 
-### 5.4 Interactive tools
+### 5.5 Interactive tools
 
 - **Pause / single-step / playback speed.**
 - **Kick:** applies a moment impulse about the free axis. This is the quickest
@@ -565,10 +603,10 @@ in real time and watch their controller respond.
 - **Cause and effect in the plots:** airspeed and flow angles get their own
   plot traces, so the student sees "I tilted the air" on the same time axis as
   "α jumped, θ dipped, the elevator moved, θ recovered".
-- **Available from chapter 1.00**, ahead of the gust and airspeed chapters. It
-  makes the "Observe first" step hands-on: before 1.12, the student can tilt
-  the air and *see* their PID fail to reject it. Chapter guides list specific
-  experiments under "Things to try".
+- **Available from chapter 1.01** (1.00 keeps the viewer minimal), ahead of
+  the gust and airspeed chapters. It makes the "Observe first" step hands-on:
+  before 1.12, the student can tilt the air and *see* their PID fail to reject
+  it. Chapter guides list specific experiments under "Things to try".
 - **What the controller sees:** the air vector is a disturbance, not an
   observation. The controller only learns about it through its effect on the
   aircraft, plus airspeed once the airspeed sensor arrives (1.14), just like a
@@ -576,7 +614,7 @@ in real time and watch their controller respond.
 - **Free-flight chapters** (Parts IV–VI) keep the gust button but not this
   panel; there, wind comes from the scenario.
 
-### 5.5 Logging and replay
+### 5.6 Logging and replay
 
 Every graded run, and every live run when it ends (Ctrl+C) or is reset after
 more than 1 s, writes `runs/<timestamp>_<chapter>_<label>/` with full state, commands,
@@ -595,7 +633,8 @@ Each chapter is a folder:
 
 ```
 chapters/1.03_integral/
-  chapter.yaml     # rig, enabled effects, observations fields, scenarios, pass criteria
+  chapter.yaml     # rig, enabled effects, observations fields, scenarios, pass criteria,
+                   # viewer elements unlocked (§5.3)
   GUIDE.md         # concept, physics you need, your task, things to try, questions
 ```
 
@@ -629,7 +668,7 @@ Wind-tunnel stand, constant airspeed, pivot at the CG. Only the elevator matters
 
 | # | New concept | Student does | Graded on |
 |---|---|---|---|
-| 1.00 | Meet the harness | Run open loop; fly by hand in manual mode; kick it | — (orientation) |
+| 1.00 | Meet the harness | Run open loop and watch it settle; fly by hand in manual mode | — (orientation) |
 | 1.01 | Trim | Return a constant elevator that holds θ = 0 (found by experiment) | \|θ\| < 0.5° after 10 s |
 | 1.02 | Proportional control | $`\delta_e = -K_p(\theta_{cmd} - \theta)`$; observe steady-state error from $`C_{m_0}`$ and oscillation at high gain | θ within 2° of command |
 | 1.03 | Derivative / damping | Add rate feedback using q; see overshoot vanish | Overshoot < 10%, settling < 3 s |

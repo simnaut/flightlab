@@ -26,3 +26,8 @@ observations:
 
 # No grading: this chapter is for exploring.
 grading: null
+
+# What appears in the viewer from this chapter on (see VIEWER_FEATURES in
+# flightlab/scenario/chapter.py). Earlier chapters' elements stay.
+viewer:
+  unlock: [manual]

@@ -26,7 +26,7 @@ class LoggingController(ControllerBase):
 
 @pytest.fixture
 def viewer():
-    ch = load_chapter("1.00")
+    ch = load_chapter("1.02")          # has the wind tunnel, kick and manual controls
     sim = Simulation(ch, LoggingController())
     runner = Runner(LiveSource(sim), ch)
     server = ViewerServer(runner, ch).start()
@@ -81,15 +81,16 @@ def test_hello_frames_and_inputs(viewer):
     sim, runner, server = viewer
     with connect(_ws_url(server)) as ws:
         hello = _recv(ws, "hello")
-        assert hello["chapter"]["id"] == "1.00"
+        assert hello["chapter"]["id"] == "1.02"
         assert hello["live"] is True and hello["mode"] == "controller"
+        assert {"kick", "manual", "tunnel", "theta_cmd"} <= set(hello["features"])
+        assert "pitch_rate" not in hello["features"]         # unlocked in 1.03
 
         frame = _recv(ws, "frame")
         assert frame["reset"] is True                       # first frame starts the log
         assert {"t", "theta", "de"} <= set(frame["rows"])
         while "log.error" not in frame.get("rows", {}):     # appears once the controller runs
             frame = _recv(ws, "frame")
-        assert not frame["reset"]
         assert not any(name.startswith("x.") for name in frame["rows"])
 
         ws.send(json.dumps({"type": "kick", "sign": 1}))
@@ -128,6 +129,26 @@ def test_controller_error_pauses_and_is_reported():
     assert "ZeroDivisionError" in state["error"]["details"]
     runner.apply({"type": "resume"})                         # can't resume past an error
     assert runner.state()["run"] == "error"
+
+
+def test_viewer_features_accumulate_by_chapter():
+    from flightlab.scenario.chapter import viewer_features
+    f100, f101, f102, f103 = (set(viewer_features(load_chapter(c)))
+                              for c in ("1.00", "1.01", "1.02", "1.03"))
+    assert f100 < f101 < f102 < f103
+    assert f100 == {"manual"}
+    assert f101 - f100 == {"tunnel"}
+    assert f102 - f101 == {"theta_cmd", "sim_step", "kick"}
+    assert f103 - f102 == {"pitch_rate"}
+
+
+def test_unknown_viewer_feature_is_rejected(tmp_path):
+    from flightlab.scenario.chapter import load_chapter_file
+    path = tmp_path / "9.99_test" / "chapter.yaml"
+    path.parent.mkdir()
+    path.write_text('id: "9.99"\nviewer:\n  unlock: [kik]\n')
+    with pytest.raises(ValueError, match="kik"):
+        load_chapter_file(path)
 
 
 # ------------------------------------------------------------ browser smoke

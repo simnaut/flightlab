@@ -7,17 +7,30 @@ import { COLORS, DEG, STUDENT_COLORS } from "./theme.js";
 export const WINDOW_S = 20;
 const R2D = 1 / DEG;
 
-// [title, [[channel, label, color, dashed, scale], ...]]
-const PLOTS = [
-  ["Pitch angle (deg)", [["ref_theta", "θ cmd", COLORS.command, true, R2D],
-                         ["theta", "θ", COLORS.theta, false, R2D]]],
-  ["Angle of attack & pitch rate", [["alpha", "α (deg)", COLORS.alpha, false, R2D],
-                                    ["q", "q (deg/s)", COLORS.q, false, R2D]]],
-  ["Elevator (deg)", [["de_cmd", "δe cmd", COLORS.command, true, R2D],
-                      ["de", "δe actual", COLORS.elevator, false, R2D]]],
-  ["Wind tunnel air", [["tunnel_airspeed", "airspeed (m/s)", COLORS.arrow, false, 1],
-                       ["tunnel_flow", "flow angle (deg)", COLORS.flow, false, R2D]]],
-];
+/**
+ * The plots to show, given the chapter's unlocked viewer features (a Set).
+ * Returns [[title, [[channel, label, color, dashed, scale], ...]], ...].
+ */
+export function plotSpecs(features) {
+  const has = (f) => features.has(f);
+  // Later series draw on top. θ goes last: with level tunnel air α equals θ,
+  // and α should only show once the air is tilted and the two separate.
+  const pitch = [];
+  if (has("theta_cmd")) pitch.push(["ref_theta", "θ cmd", COLORS.command, true, R2D]);
+  if (has("tunnel")) pitch.push(["alpha", "α", COLORS.alpha, false, R2D]);
+  pitch.push(["theta", "θ", COLORS.theta, false, R2D]);
+  const elevator = has("elevator_cmd")
+    ? [["de_cmd", "δe cmd", COLORS.command, true, R2D], ["de", "δe actual", COLORS.elevator, false, R2D]]
+    : [["de", "δe", COLORS.elevator, false, R2D]];
+  const specs = [[has("tunnel") ? "Pitch angle & angle of attack (deg)" : "Pitch angle (deg)", pitch]];
+  if (has("pitch_rate")) specs.push(["Pitch rate (deg/s)", [["q", "q", COLORS.q, false, R2D]]]);
+  specs.push(["Elevator (deg)", elevator]);
+  if (has("tunnel")) {
+    specs.push(["Wind tunnel air", [["tunnel_airspeed", "airspeed (m/s)", COLORS.arrow, false, 1],
+                                    ["tunnel_flow", "flow angle (deg)", COLORS.flow, false, R2D]]]);
+  }
+  return specs;
+}
 const STUDENT_TITLE = "Your signals (self.log)";
 const AXIS = { stroke: "#c8ccd0", grid: { stroke: "rgba(255,255,255,0.08)", width: 1 },
   ticks: { stroke: "rgba(255,255,255,0.15)", width: 1 }, font: "11px system-ui, sans-serif" };
@@ -48,8 +61,9 @@ function makeOpts(title, traces, width, height) {
 }
 
 export class Plots {
-  constructor(container) {
+  constructor(container, specs) {
     this.container = container;
+    this.specs = specs;            // from plotSpecs()
     this.plots = [];               // [{u, traces}]
     this.student = [];             // selected student signal names
     this.size = [600, 120];
@@ -67,7 +81,8 @@ export class Plots {
     for (const p of this.plots) p.u.destroy();
     this.container.replaceChildren();
     this.plots = [];
-    const all = [...PLOTS, [STUDENT_TITLE, this._studentTraces()]];
+    // The student plot appears once they log (and select) something
+    const all = this.student.length ? [...this.specs, [STUDENT_TITLE, this._studentTraces()]] : this.specs;
     for (const [title, traces] of all) {
       const div = document.createElement("div");
       div.className = "plot";
@@ -83,7 +98,8 @@ export class Plots {
     const h = this.container.clientHeight;
     if (!w || !h) return;
     // Each plot also has a title and a legend row (~44 px) outside its canvas.
-    const ph = Math.max(60, Math.floor(h / this.plots.length) - 44);
+    // Capped, so a chapter with only two plots doesn't get stretched ones.
+    const ph = Math.min(220, Math.max(60, Math.floor(h / this.plots.length) - 44));
     this.size = [w, ph];
     for (const { u } of this.plots) u.setSize({ width: w, height: ph });
   }

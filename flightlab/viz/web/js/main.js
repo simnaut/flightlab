@@ -10,7 +10,7 @@ import htm from "htm";
 import { Connection } from "./connection.js";
 import { Store } from "./store.js";
 import { SideView } from "./side_view.js";
-import { Plots } from "./plots.js";
+import { Plots, plotSpecs } from "./plots.js";
 import { DEG } from "./theme.js";
 
 const html = htm.bind(h);
@@ -33,9 +33,17 @@ const elevatorDeg = signal(0);
 const airspeed = signal(55);
 const flowDeg = signal(0);
 const smooth = signal(true);
-const exaggerate = signal(false);
 
 const live = computed(() => !!hello.value?.live);
+
+// Viewer elements unlocked up to this chapter (chapter.yaml: viewer.unlock).
+// Running with --manual always shows the manual controls.
+const features = computed(() => {
+  const f = new Set(hello.value?.features ?? []);
+  if (hello.value?.mode === "manual") f.add("manual");
+  return f;
+});
+const has = (name) => features.value.has(name);
 
 let sideView = null;
 let plots = null;
@@ -131,7 +139,7 @@ window.addEventListener("keydown", (ev) => {
     ev.preventDefault();
     return;
   }
-  if (!live.value || !["ArrowUp", "ArrowDown", " "].includes(key)) return;
+  if (!live.value || !has("manual") || !["ArrowUp", "ArrowDown", " "].includes(key)) return;
   ev.preventDefault();
   if (!manual.value) setManual(true);
   if (key === "ArrowUp") setElevator(elevatorDeg.value + ELEVATOR_KEY_STEP);
@@ -159,12 +167,13 @@ function draw() {
   const air = v("tunnel_airspeed", 55), flow = v("tunnel_flow");
   sideView.update({ t, theta, alpha, de, deCmd, airspeed: air, flow });
   if (infoBox) {
-    infoBox.textContent =
-      `t = ${t.toFixed(2).padStart(6)} s    ${hello.value?.live ? modeLabel(v("manual") > 0.5) : "REPLAY"}\n` +
-      `θ  ${fmt(theta / DEG)}°   cmd ${fmt(v("ref_theta") / DEG)}°\n` +
-      `α  ${fmt(alpha / DEG)}°\n` +
-      `δe ${fmt(de / DEG)}°\n` +
-      `V  ${air.toFixed(1).padStart(5)} m/s   flow ${fmt(flow / DEG, 1, 5)}°`;
+    const lines = [`t = ${t.toFixed(2).padStart(6)} s    ${hello.value?.live ? modeLabel(v("manual") > 0.5) : "REPLAY"}`];
+    lines.push(`θ  ${fmt(theta / DEG)}°` + (has("theta_cmd") ? `   cmd ${fmt(v("ref_theta") / DEG)}°` : ""));
+    if (has("tunnel")) lines.push(`α  ${fmt(alpha / DEG)}°`);
+    if (has("pitch_rate")) lines.push(`q  ${fmt(v("q") / DEG)}°/s`);
+    lines.push(`δe ${fmt(de / DEG)}°`);
+    if (has("tunnel")) lines.push(`V  ${air.toFixed(1).padStart(5)} m/s   flow ${fmt(flow / DEG, 1, 5)}°`);
+    infoBox.textContent = lines.join("\n");
   }
   plots.setStudentSignals(selected.value);
   plots.update(store, t);
@@ -172,7 +181,6 @@ function draw() {
 }
 requestAnimationFrame(draw);
 
-effect(() => { if (sideView) sideView.exaggerate = exaggerate.value ? 3 : 1; dirty = true; });
 effect(() => { if (sideView) sideView.setAirTarget(airspeed.value, flowDeg.value * DEG); });
 effect(() => { selected.value; dirty = true; });
 
@@ -187,8 +195,8 @@ function ViewPanel() {
       flowRange: t.flow_range,
       onAirDragged: (speed, flow) => setAir(speed, flow / DEG),
     });
+    sideView.setFeatures(features.value);
     sideView.setInteractive(live.value);
-    sideView.exaggerate = exaggerate.value ? 3 : 1;
     sideView.setAirTarget(airspeed.value, flowDeg.value * DEG);
     infoBox = info.current;
     dirty = true;
@@ -226,33 +234,33 @@ function SimControls() {
       <legend>Simulation</legend>
       <button class="primary" onClick=${togglePause} disabled=${!!st?.error}>
         ${paused ? "▶ Play" : "❚❚ Pause"}</button>
-      <button onClick=${() => send("step")} title="Advance one controller update (pauses)">Step</button>
+      ${has("sim_step") && html`
+        <button onClick=${() => send("step")} title="Advance one controller update (pauses)">Step</button>`}
       <button onClick=${() => send("reset")}>Reset</button>
-      <label class="inline">Speed
-        <select value=${String(st?.speed ?? 1)}
-          onChange=${(e) => send("speed", { value: Number(e.currentTarget.value) })}>
-          ${SPEEDS.map((s) => html`<option value=${String(s)}>${s}×</option>`)}
-        </select>
-      </label>
+      ${has("sim_step") && html`
+        <label class="inline">Speed
+          <select value=${String(st?.speed ?? 1)}
+            onChange=${(e) => send("speed", { value: Number(e.currentTarget.value) })}>
+            ${SPEEDS.map((s) => html`<option value=${String(s)}>${s}×</option>`)}
+          </select>
+        </label>`}
     </fieldset>`;
 }
 
 function DisturbControls() {
+  if (!has("kick")) return null;
   return html`
     <fieldset class="box">
-      <legend>Disturb / view</legend>
+      <legend>Disturb</legend>
       <button disabled=${!live.value} title="Short nose-up push on the aircraft"
         onClick=${() => send("kick", { sign: 1 })}>Kick ▲</button>
       <button disabled=${!live.value} title="Short nose-down push on the aircraft"
         onClick=${() => send("kick", { sign: -1 })}>Kick ▼</button>
-      <label class="inline" title="Draw the elevator deflection 3× larger so small moves are visible">
-        <input type="checkbox" checked=${exaggerate.value}
-          onChange=${(e) => { exaggerate.value = e.currentTarget.checked; }} /> Elevator ×3
-      </label>
     </fieldset>`;
 }
 
 function ManualControls() {
+  if (!has("manual")) return null;
   const range = (hello.value.elevator_range ?? 25 * DEG) / DEG;
   return html`
     <fieldset class="box wide" disabled=${!live.value}>
@@ -272,6 +280,7 @@ function ManualControls() {
 }
 
 function TunnelControls() {
+  if (!has("tunnel")) return null;
   const t = hello.value.tunnel;
   const [lo, hi] = t.airspeed_range;
   const flowMax = t.flow_range / DEG;
@@ -299,7 +308,7 @@ function TunnelControls() {
 function PlotsPanel() {
   const ref = useRef(null);
   useEffect(() => {
-    plots = new Plots(ref.current);
+    plots = new Plots(ref.current, plotSpecs(features.value));
     dirty = true;
     return () => { plots.ro.disconnect(); plots = null; };
   }, []);
@@ -313,11 +322,11 @@ function SignalPicker() {
     if (on) set.add(name); else set.delete(name);
     selected.value = [...set].sort();
   };
+  if (names.length === 0) return null;     // appears once the controller logs something
   return html`
     <fieldset class="box signals">
-      <legend>Your signals: call <code>self.log("name", value)</code> in your controller</legend>
-      ${names.length === 0 ? html`<span class="muted">None logged yet.</span>`
-        : names.map((name) => html`
+      <legend>Your signals <span class="muted">(from <code>self.log()</code>)</span></legend>
+      ${names.map((name) => html`
           <label class="inline">
             <input type="checkbox" checked=${selected.value.includes(name)}
               onChange=${(e) => toggle(name, e.currentTarget.checked)} /> ${name}
