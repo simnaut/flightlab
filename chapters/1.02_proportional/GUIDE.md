@@ -6,6 +6,12 @@
 step to +5° at t = 4 s, then step to −3° at t = 12 s. A constant elevator can't
 follow that. Your controller has to **look at the error** and react.
 
+**New in the viewer:** the commanded pitch angle (dashed white in the pitch
+plot, and `cmd` in the readout), a **Step** button that advances one
+controller update, a **Speed** box to slow time down, and **Kick** buttons
+that give the aircraft a short push, so you can see your controller fight
+back. Anything you `self.log()` gets its own plot.
+
 ## Physics you need
 
 The **error** is how far you are from where you want to be:
@@ -72,7 +78,8 @@ each change.
 - $`K_p`$ = 0.5, 1, 2, 4, 8. For each, note the steady-state error and how much
   it overshoots and oscillates after a step. Make a table.
 - Flip the sign on purpose and watch it run away.
-- Kick it with a high $`K_p`$. Compare with 1.00 open loop.
+- Kick it with a high $`K_p`$, then a low one. Compare with the open-loop
+  swing in 1.00.
 - Run `flightlab replay latest` to watch your last run again, at slow speed
   if you like (use the Speed box).
 

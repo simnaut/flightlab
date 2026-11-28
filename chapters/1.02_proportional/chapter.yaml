@@ -31,3 +31,8 @@ grading:
       max: 1.5
     - metric: overshoot
       max: 50
+
+# What appears in the viewer from this chapter on (see VIEWER_FEATURES in
+# flightlab/scenario/chapter.py). Earlier chapters' elements stay.
+viewer:
+  unlock: [theta_cmd, sim_step, kick]

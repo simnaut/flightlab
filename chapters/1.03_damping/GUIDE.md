@@ -6,6 +6,9 @@ The same pitch steps as 1.02, but now the grader also checks **overshoot** and
 **settling time**. High-gain P control rings like a bell, and you'll add
 **damping** to calm it down.
 
+**New in the viewer:** a **pitch rate** plot (q, in deg/s) and `q` in the
+readout.
+
 ## Physics you need
 
 Put your P controller into the stand's equation of motion. Ignoring the

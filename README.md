@@ -69,8 +69,9 @@ flightlab replay latest            # replay your most recent run
 flightlab list                     # chapters and your progress
 ```
 
-In the viewer you can **kick** the airplane, change the **wind tunnel** air
-(drag the blue arrow, or use the sliders), slow down time, and single-step your
+The viewer starts simple and adds elements as the chapters need them. Along
+the way you can **kick** the airplane, change the **wind tunnel** air (drag the
+blue arrow, or use the sliders), slow down time, and single-step your
 controller.
 
 ### Viewing from another device
@@ -97,4 +98,7 @@ iPad).
   `--screenshot` option used for guide images) needs Playwright:
   `uv sync --extra dev --extra browser`, then `uv run playwright install chromium`.
 - Chapter setup and pass thresholds live in `chapters/<id>/chapter.yaml`.
+  So does `viewer.unlock`: the viewer elements that appear from that chapter
+  on (names in `VIEWER_FEATURES` in `flightlab/scenario/chapter.py`). The
+  viewer starts minimal and grows as the chapters need more.
 - Aircraft parameters live in `aircraft/trainer.yaml`.

@@ -10,7 +10,24 @@ import { COLORS, DEG } from "./theme.js";
 const NS = "http://www.w3.org/2000/svg";
 const ARROW_M_PER_MPS = 0.06;       // control-arrow length per m/s of airspeed
 const PARTICLE_SPEED_SCALE = 0.12;  // wind particles move at this fraction of real airspeed
+const ELEVATOR_KNEE = 5 * DEG;      // deflections well below this are drawn about 3x larger
+
+/**
+ * Drawn elevator angle for a real one. Real deflections are often a few
+ * degrees, which barely moves a flap this small on screen, so small angles
+ * are enlarged: about x3 near zero, x2 at 5°, x1.4 at 10°, and roughly true
+ * size near the 25° limit. Always increasing, so more deflection always looks
+ * like more. Plots and readouts show the true angle.
+ */
+export function drawnElevator(de) {
+  const u = de / ELEVATOR_KNEE;
+  return de * (1 + 2 / (1 + u * u));
+}
 const ANCHOR = [4.4, 0.0];          // the air arrow's head
+// Bigger drag handle where the main pointer is a finger (phones, tablets)
+const TOUCH = window.matchMedia("(any-pointer: coarse)").matches;
+const HANDLE_R = TOUCH ? 0.42 : 0.22;   // visible ring (m)
+const HANDLE_HIT_R = TOUCH ? 0.95 : 0.4; // invisible grab area (m)
 
 // Aircraft outline (side view of a high-wing trainer)
 const FUSELAGE = [[2.7, 0.0], [2.55, 0.35], [1.6, 0.55], [0.95, 1.0], [-0.7, 1.0], [-1.3, 0.62],
@@ -60,7 +77,6 @@ export class SideView {
   constructor(container, opts) {
     this.opts = opts;
     this.interactive = true;
-    this.exaggerate = 1;
     this.target = [55, 0];
     this.dragging = false;
 
@@ -124,8 +140,10 @@ export class SideView {
     // Air control arrow and its drag handle
     this.arrowLine = el("line", { ...thin, stroke: COLORS.arrow, "stroke-width": 3 }, world);
     this.arrowHead = el("polygon", { points: "0,0 -0.45,0.17 -0.45,-0.17", fill: COLORS.arrow }, world);
-    this.handle = el("circle", { ...thin, r: 0.22, fill: COLORS.bg, stroke: COLORS.arrow,
-      "stroke-width": 2, class: "air-handle" }, world);
+    // The ring is drawn; the larger transparent circle on top takes the drag.
+    this.handleRing = el("circle", { ...thin, r: HANDLE_R, fill: COLORS.bg, stroke: COLORS.arrow,
+      "stroke-width": TOUCH ? 3 : 2, class: "air-handle-ring" }, world);
+    this.handle = el("circle", { r: HANDLE_HIT_R, fill: "transparent", class: "air-handle" }, world);
 
     // Text (unflipped: world (x, y) is drawn at (x, -y))
     const text = (color, anchor) => el("text", { fill: color, "text-anchor": anchor,
@@ -136,12 +154,25 @@ export class SideView {
 
     this._bindDrag();
     this.setAirTarget(55, 0);
+    this.setFeatures(new Set());
+  }
+
+  /** Show only what the chapter has unlocked (see plotSpecs / VIEWER_FEATURES). */
+  setFeatures(features) {
+    const show = (nodes, on) => { for (const n of nodes) n.style.display = on ? "" : "none"; };
+    this.tunnel = features.has("tunnel");
+    show([this.windAxis, this.alphaArc, this.alphaLabel, this.arrowLine, this.arrowHead,
+          this.airLabel], this.tunnel);
+    show([this.elevatorGhost], features.has("elevator_cmd"));
+    this.setInteractive(this.interactive);
   }
 
   // ------------------------------------------------------------------ air
   setInteractive(on) {
     this.interactive = on;
-    this.handle.style.display = on ? "" : "none";
+    const display = on && this.tunnel ? "" : "none";
+    this.handle.style.display = display;
+    this.handleRing.style.display = display;
   }
 
   setAirTarget(airspeed, flow) {
@@ -157,6 +188,7 @@ export class SideView {
     // Head points from the tail toward the anchor: direction angle = -flow + 180°
     set(this.arrowHead, { transform: `translate(${ANCHOR[0]},${ANCHOR[1]}) rotate(${180 - flow / DEG})` });
     set(this.handle, { cx: tail[0], cy: tail[1] });
+    set(this.handleRing, { cx: tail[0], cy: tail[1] });
     // Keep the label inside the view (the right edge is at x = 9)
     set(this.airLabel, { x: Math.min(tail[0], 7.2), y: -(Math.min(tail[1], ANCHOR[1]) - 0.45) });
     this.airLabel.textContent = `air ${airspeed.toFixed(0)} m/s, ${fmt(flow / DEG)}°`;
@@ -178,6 +210,8 @@ export class SideView {
 
   _bindDrag() {
     const h = this.handle;
+    h.addEventListener("pointerenter", () => this.handleRing.classList.add("hover"));
+    h.addEventListener("pointerleave", () => this.handleRing.classList.remove("hover"));
     h.addEventListener("pointerdown", (ev) => {
       if (!this.interactive) return;
       this.dragging = true;
@@ -231,11 +265,10 @@ export class SideView {
 
   /** Draw one frame. Angles in radians. */
   update({ t, theta, alpha, de, deCmd, airspeed, flow }) {
-    const ex = this.exaggerate;
     this.aircraft.setAttribute("transform", `rotate(${theta / DEG})`);
     const hinge = `${HINGE[0]} ${HINGE[1]}`;
-    this.elevator.setAttribute("transform", `rotate(${(de * ex) / DEG} ${hinge})`);
-    this.elevatorGhost.setAttribute("transform", `rotate(${(deCmd * ex) / DEG} ${hinge})`);
+    this.elevator.setAttribute("transform", `rotate(${drawnElevator(de) / DEG} ${hinge})`);
+    this.elevatorGhost.setAttribute("transform", `rotate(${drawnElevator(deCmd) / DEG} ${hinge})`);
     this._updateParticles(t, airspeed, flow);
 
     const wind = theta - alpha;           // relative wind direction

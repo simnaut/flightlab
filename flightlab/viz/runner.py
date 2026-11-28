@@ -35,8 +35,8 @@ def _finite(value):
 
 
 def _column(arr):
-    """A JSON-safe list: NaN becomes null."""
-    return [None if v != v else v for v in arr.tolist()]
+    """A JSON-safe list: NaN and ±inf become null."""
+    return [v if math.isfinite(v) else None for v in arr.tolist()]
 
 
 class Runner:
@@ -152,6 +152,8 @@ class Runner:
     def apply(self, msg):
         """Apply one browser message. Unknown or malformed messages are ignored."""
         kind = msg.get("type") if isinstance(msg, dict) else None
+        if not isinstance(kind, str):
+            return
         src = self.source
         if kind in LIVE_ONLY and not src.live:
             return
@@ -198,6 +200,10 @@ class Runner:
                     sim.reset()
                 except (ControllerError, SimulationError) as exc:
                     self._fail(getattr(exc, "message", str(exc)), getattr(exc, "details", ""), exc)
+                    self.generation += 1
+                    return
+                except Exception as exc:      # e.g. the student's reset() raised
+                    self._fail("Error while resetting:", traceback.format_exc(), exc)
                     self.generation += 1
                     return
                 if manual:                    # keep flying by hand across a reset
@@ -260,7 +266,23 @@ class Runner:
 
     # -------------------------------------------------------------- saving
     def save_log(self):
+        """Save the live run. Safe to call from any thread.
+
+        The sim thread only writes the log while holding the lock, so saving under
+        the lock gives a consistent snapshot. If the lock can't be had, the sim
+        thread is stuck inside a controller call that never returned; it isn't
+        writing the log, so save what's there rather than lose the run.
+        """
         src = self.source
-        if src.live and src.t > 1.0:
+        if not (src.live and src.t > 1.0):
+            return
+        locked = self.lock.acquire(timeout=2.0)
+        try:
+            if not locked:
+                print("The controller is still running (stuck?); saving the run up to now.",
+                      file=sys.stderr)
             self.saved_folder = src.log.save(label="live")
-            print(f"Run saved to {self.saved_folder}")
+        finally:
+            if locked:
+                self.lock.release()
+        print(f"Run saved to {self.saved_folder}")

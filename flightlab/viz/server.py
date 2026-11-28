@@ -25,6 +25,8 @@ from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Response
 
+from flightlab.scenario.chapter import viewer_features
+
 PROTOCOL_VERSION = 1
 FRAME_HZ = 30
 WEB_DIR = Path(__file__).parent / "web"
@@ -39,7 +41,7 @@ FLOW_RANGE_DEG = 15.0                # +- vertical flow angle
 ELEVATOR_RANGE_DEG = 25.0            # +- manual elevator slider
 
 
-def hello_message(runner, chapter):
+def hello_message(runner, chapter, features=None):
     src = runner.source
     cfg = chapter.config
     tunnel = cfg["tunnel"]
@@ -56,6 +58,7 @@ def hello_message(runner, chapter):
                    "airspeed_range": AIRSPEED_RANGE,
                    "flow_range": FLOW_RANGE_DEG * DEG},
         "elevator_range": ELEVATOR_RANGE_DEG * DEG,
+        "features": viewer_features(chapter) if features is None else features,
     }
     if not src.live:
         msg["replay"] = {"duration": src.duration}
@@ -81,10 +84,12 @@ class ViewerServer:
         self.host = host
         self.port = port
         self.token = secrets.token_urlsafe(16)
+        self.features = viewer_features(chapter)
         self.clients = 0
         self._loop = None
         self._stopped = None
         self._ready = threading.Event()
+        self._start_error = None
         self._thread = threading.Thread(target=self._run, name="flightlab-viz", daemon=True)
 
     @property
@@ -94,9 +99,11 @@ class ViewerServer:
 
     def start(self):
         self._thread.start()
-        self._ready.wait(10)
-        if not self.port:
-            raise RuntimeError("The viewer server did not start.")
+        if not self._ready.wait(10):
+            raise RuntimeError("The viewer server did not start within 10 s.")
+        if self._start_error is not None:
+            raise RuntimeError(f"The viewer server could not listen on "
+                               f"{self.host}:{self.port}: {self._start_error}") from self._start_error
         return self
 
     def stop(self):
@@ -106,7 +113,13 @@ class ViewerServer:
 
     # ------------------------------------------------------------- asyncio
     def _run(self):
-        asyncio.run(self._main())
+        try:
+            asyncio.run(self._main())
+        except Exception as exc:          # e.g. the port is taken
+            if self._ready.is_set():
+                raise
+            self._start_error = exc
+            self._ready.set()
 
     async def _main(self):
         self._loop = asyncio.get_running_loop()
@@ -132,7 +145,7 @@ class ViewerServer:
     async def _handler(self, ws):
         self.clients += 1
         try:
-            await ws.send(json.dumps(hello_message(self.runner, self.chapter)))
+            await ws.send(json.dumps(hello_message(self.runner, self.chapter, self.features)))
             sender = asyncio.create_task(self._send_frames(ws))
             try:
                 async for raw in ws:
