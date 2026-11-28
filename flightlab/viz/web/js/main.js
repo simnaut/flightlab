@@ -181,7 +181,10 @@ function draw() {
 }
 requestAnimationFrame(draw);
 
-effect(() => { if (sideView) sideView.setAirTarget(airspeed.value, flowDeg.value * DEG); });
+effect(() => {
+  const v = airspeed.value, flow = flowDeg.value * DEG;   // read first, so the effect subscribes
+  if (sideView) sideView.setAirTarget(v, flow);
+});
 effect(() => { selected.value; dirty = true; });
 
 // ------------------------------------------------------------ components

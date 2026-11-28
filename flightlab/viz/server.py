@@ -89,6 +89,7 @@ class ViewerServer:
         self._loop = None
         self._stopped = None
         self._ready = threading.Event()
+        self._start_error = None
         self._thread = threading.Thread(target=self._run, name="flightlab-viz", daemon=True)
 
     @property
@@ -98,9 +99,11 @@ class ViewerServer:
 
     def start(self):
         self._thread.start()
-        self._ready.wait(10)
-        if not self.port:
-            raise RuntimeError("The viewer server did not start.")
+        if not self._ready.wait(10):
+            raise RuntimeError("The viewer server did not start within 10 s.")
+        if self._start_error is not None:
+            raise RuntimeError(f"The viewer server could not listen on "
+                               f"{self.host}:{self.port}: {self._start_error}") from self._start_error
         return self
 
     def stop(self):
@@ -110,7 +113,13 @@ class ViewerServer:
 
     # ------------------------------------------------------------- asyncio
     def _run(self):
-        asyncio.run(self._main())
+        try:
+            asyncio.run(self._main())
+        except Exception as exc:          # e.g. the port is taken
+            if self._ready.is_set():
+                raise
+            self._start_error = exc
+            self._ready.set()
 
     async def _main(self):
         self._loop = asyncio.get_running_loop()

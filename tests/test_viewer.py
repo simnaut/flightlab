@@ -131,6 +131,61 @@ def test_controller_error_pauses_and_is_reported():
     assert runner.state()["run"] == "error"
 
 
+def test_malformed_message_types_are_ignored():
+    ch = load_chapter("1.00")
+    runner = Runner(LiveSource(Simulation(ch, LoggingController())), ch)
+    for msg in ({"type": []}, {"type": {}}, {"type": 3}, [], "pause"):
+        runner.apply(msg)                                    # no TypeError
+    runner.apply({"type": "pause"})
+    assert runner.state()["run"] == "paused"
+
+
+def test_non_finite_logged_values_become_null():
+    class Infinite(ControllerBase):
+        def update(self, observations, dt):
+            self.log("big", float("inf"))
+            self.log("small", float("-inf"))
+            return Command(elevator=0.0)
+
+    ch = load_chapter("1.00")
+    runner = Runner(LiveSource(Simulation(ch, Infinite())), ch)
+    runner.advance(0.1)
+    _, _, _, rows = runner.read(0, 0, timeout=0)
+    assert set(rows["log.big"]) == {None} and set(rows["log.small"]) == {None}
+    json.dumps(rows, allow_nan=False)                        # what the server sends
+
+
+def test_reset_survives_a_failing_controller_reset():
+    class BadReset(ControllerBase):
+        resets = 0
+
+        def reset(self, info):
+            BadReset.resets += 1
+            if BadReset.resets > 1:                          # fine at start, fails on Reset
+                raise ValueError("oops")
+
+        def update(self, observations, dt):
+            return Command(elevator=0.0)
+
+    ch = load_chapter("1.00")
+    runner = Runner(LiveSource(Simulation(ch, BadReset())), ch)
+    runner.start()
+    try:
+        runner.submit({"type": "reset"})
+        assert _wait_for(lambda: runner.state()["run"] == "error")
+        assert "ValueError" in runner.state()["error"]["details"]
+        assert runner.generation == 1
+        assert runner._thread.is_alive()                     # still taking input
+    finally:
+        runner.stop()
+
+
+def test_server_reports_a_port_in_use(viewer):
+    _, runner, server = viewer
+    with pytest.raises(RuntimeError, match="could not listen"):
+        ViewerServer(runner, runner.chapter, port=server.port).start()
+
+
 def test_viewer_features_accumulate_by_chapter():
     from flightlab.scenario.chapter import viewer_features
     f100, f101, f102, f103 = (set(viewer_features(load_chapter(c)))
